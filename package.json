@@ -1,0 +1,22 @@
+{
+  "name": "genkit-tools",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "npx tsx src/index.ts",
+    "devui": "npx genkit start -- npm run dev"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@genkit-ai/express": "^1.7.0",
+    "@genkit-ai/googleai": "^1.7.0",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
