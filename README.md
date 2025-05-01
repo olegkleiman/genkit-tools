@@ -1,4 +1,8 @@
-# Genkit flow with tools
+# Genkit flow with tools. 
+This is a simulation of events locator. Provide the area where you want to look for the incoming event, and the simulator backed up with GeminiFlash 2.5 will give you the list.
+
+This demonstrates the Genkit flow (aka Agent) equipped with a tool, i.e. function that could be called manually (if *returnToolRequests* flag is set for *ai.generate()* call) and automatically if it is not set.
+In the case of returnToolRequests = true, you get the full flexibility to call the tool in any context with any parameters.
 
 ## How to use:
 ### 1. You might presumable need Genkit CLI. 
@@ -26,7 +30,7 @@ The last script runs Genlit developer UI in browser
 curl --location 'http://localhost:3400/ToolsFlow' \
 --header 'Content-Type: application/json' \
 --data '{
-    "data": "List the events in Dubai?"
+    "data": "מה האירועים באיזור אלנבי?"
 }'
 ```
 

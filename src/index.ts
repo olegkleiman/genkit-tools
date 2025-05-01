@@ -49,15 +49,17 @@ export const ToolsFlow =  ai.defineFlow(
 
         const generateOptions = {
             tools: [getWeather, getEvents],
-            returnToolRequests: true,
+            returnToolRequests: true, // Explicitly handling tool calls
             prompt: `Question: ${input}`            
         }
 
         // generate a response
-        const initialResponse =  await ai.generate(generateOptions);
-        // return initialResponse;
-
-        const toolRequests = initialResponse.toolRequests;
+        const llmResponse =  await ai.generate(generateOptions);
+        const toolRequests = llmResponse.toolRequests;
+        if( toolRequests.length == 0 ) {
+            console.log("No tool requests found in the initial response.");
+            return llmResponse;
+        }
 
         console.log("Tool requests: ", toolRequests);
         const toolResponseParts: ToolResponsePart[] = await Promise.all(
@@ -71,7 +73,7 @@ export const ToolsFlow =  ai.defineFlow(
                     output = await getEvents.run(toolRequest.input as { location: string });
                 }
 
-                console.log(`Executing tool: ${toolRequest.name} with input: ${toolRequest.input}. Output: ${output}`);
+                console.log(`Executing tool: ${toolRequest.name} with input: ${JSON.stringify(toolRequest.input)}. Output: ${output}`);
                 // Construct the ToolResponsePart object
                 return { 
                     toolResponse: { 
@@ -83,18 +85,12 @@ export const ToolsFlow =  ai.defineFlow(
             })
         )
 
-        if( toolResponseParts.length == 0 ) {
-            console.log("No tool requests found in the initial response.");
-            return initialResponse;
-        }
-
-        console.log("Making second generate call with tool responses...");
-
         const finalResponse = await ai.generate({
-            model: gemini25FlashPreview0417,
-            // tools: [getWeather, getEvents], // Still need to provide tools for context
+            // model: gemini25FlashPreview0417,
+            tools: [getWeather, getEvents], // Still need to provide tools for context 
+                                            // because to correctly interpret the role 'tool' for the added message.  
             messages: [
-                ...initialResponse.messages, // Includes user prompt and model's tool request message
+                ...llmResponse.messages, // Includes user prompt and model's tool request message
                 { role: 'tool', content: toolResponseParts } // Pass the correctly formatted ToolResponsePart array
             ]
         });
