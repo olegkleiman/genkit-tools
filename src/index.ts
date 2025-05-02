@@ -1,4 +1,4 @@
-import { genkit, z, ToolResponsePart } from 'genkit/beta';
+import { genkit, z, ToolResponsePart, GenerateResponse } from 'genkit/beta';
 import { googleAI, gemini25FlashPreview0417 } from '@genkit-ai/googleai';
 import { startFlowServer } from '@genkit-ai/express';
 import dotenv from 'dotenv';
@@ -10,19 +10,29 @@ const ai = genkit({
     model: gemini25FlashPreview0417
 });
 
-const getWeather = ai.defineTool(
+// Define a type for the interrupt request details to be returned
+const InterruptRequestSchema = z.object({
+    name: z.string(),
+    input: z.any(),
+    ref: z.string().optional()
+});
+
+// Define a type for the flow's output, which can be a final response or an interrupt request
+const FlowOutputSchema = z.object({ // Signal that an interrupt occurred
+    status: z.literal('INTERRUPT'),
+    interrupt: InterruptRequestSchema
+})
+
+const askQuestion = ai.defineInterrupt(
     {
-        name: "weatherTool",
-        description: 'Gets the current weather in a given location',
-        inputSchema: z.object({ 
-          location: z.string().describe('The location to get the current weather for')
+        name: "askQuestion",
+        description: 'Asks a question to narrow the area of interest',
+        inputSchema: z.object({
+            choices: z.array(z.string()).describe('the choices to display to the user'),
+            allowOther: z.boolean().optional().describe('when true, allow write-ins')
         }),
-        outputSchema: z.string()
-    },
-    async (input) => {
-        console.log('Input:', input);
-        return `The current weather in ${input.location} is 63°F and sunny.`;
-    }    
+        outputSchema: z.string() // The user's answer
+    }
 );
 
 const getEvents = ai.defineTool(
@@ -43,14 +53,16 @@ const getEvents = ai.defineTool(
 export const ToolsFlow =  ai.defineFlow(
     {
         name: "ToolsFlow",
-        inputSchema: z.string()
+        inputSchema: z.string(),
+        // outputSchema: FlowOutputSchema
     },
-    async (input: string) => {
+    async (flowInput) => {
 
         const generateOptions = {
-            tools: [getWeather, getEvents],
+            tools: [getEvents, askQuestion],
             returnToolRequests: true, // Explicitly handling tool calls
-            prompt: `Question: ${input}`            
+            prompt: `Your goal is to provide event information using 'eventsTool'. If the user's request is ambiguous or too broad (e.g., 'events nearby'), you MUST use the 'askQuestion' tool to ask for clarification of the neighborhood in Tel-Aviv city. Do NOT ask clarifying questions directly in your text response; use the 'askQuestion' tool structure. Answer in Hebrew. User's initial question: ${flowInput}`,
+            //prompt: `Question: ${input}`            
         }
 
         // generate a response
@@ -62,16 +74,30 @@ export const ToolsFlow =  ai.defineFlow(
         }
 
         console.log("Tool requests: ", toolRequests);
+
+        // Check specifically for the interrupt
+        const interruptPart = toolRequests.find( part => part.toolRequest.name === "askQuestion" );
+        if( interruptPart ) {
+            const interruptRequest = interruptPart.toolRequest;
+            // *** PAUSE POINT ***
+
+            return {
+                toolResponse: {
+                    name: interruptRequest, // "INTERRUPT",
+                    ref: interruptRequest.ref,
+                    input: interruptRequest.input,
+                }
+            }
+        }
+
         const toolResponseParts: ToolResponsePart[] = await Promise.all(
             toolRequests.map( async (toolRequestPart) => {
                 const toolRequest = toolRequestPart.toolRequest;
 
                 let output : any = "";
-                if( toolRequest.name === "weatherTool" ) {
-                    output = await getWeather.run(toolRequest.input as { location: string });
-                } else if( toolRequest.name === "eventsTool" ) {
+                if( toolRequest.name === "eventsTool" ) {
                     output = await getEvents.run(toolRequest.input as { location: string });
-                }
+                } 
 
                 console.log(`Executing tool: ${toolRequest.name} with input: ${JSON.stringify(toolRequest.input)}. Output: ${output}`);
                 // Construct the ToolResponsePart object
@@ -86,8 +112,7 @@ export const ToolsFlow =  ai.defineFlow(
         )
 
         const finalResponse = await ai.generate({
-            // model: gemini25FlashPreview0417,
-            tools: [getWeather, getEvents], // Still need to provide tools for context 
+            tools: [getEvents, askQuestion],// Still need to provide tools for context 
                                             // because to correctly interpret the role 'tool' for the added message.  
             messages: [
                 ...llmResponse.messages, // Includes user prompt and model's tool request message
